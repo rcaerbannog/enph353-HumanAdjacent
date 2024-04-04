@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+import sys
+import rospy
+import cv2
+import numpy as np
+from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Image
+from std_msgs.msg import String
+from cv_bridge import CvBridge, CvBridgeError
+
+class line_follow:
+    #constructor
+    def __init__(self):
+        #initialize move command
+        self.move_cmd = Twist()
+
+
+    #Line following code
+    def line_drive(self, image):
+        #PROCESSING THE IMAGE
+        #image width = 800, center = 400, height = 720
+        
+        #grayscale image
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        #blur image (to remove noise)
+        blur_image = cv2.blur(gray_image, (7,7))
+        
+        #inverse binary threshold image
+        temp, binary_image = cv2.threshold(blur_image, 230, 255, cv2.THRESH_BINARY)
+        
+        #FINDING THE LINE
+        #find the contours of the binary image
+        contours, hierarchy = cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        if(len(contours) >= 1):
+            #order contours
+            #remove zero area contours
+            contours = [contour for contour in contours if int(cv2.moments(contour)['m00']) != 0]
+            #remove contours with area less than 500
+            contours = [contour for contour in contours if int(cv2.moments(contour)['m00']) >= 500]
+            #sort contours by leftmost center of mass
+            sorted_contours = tuple(sorted(contours, key = lambda x: cv2.moments(x)['m10']/cv2.moments(x)['m00']))
+            #print(cv2.moments(sorted_contours[0])['m00'])
+
+            #add green contours to the original OpenCV image
+            contour_color = (0, 255, 0)
+            contour_thick = 5
+            wcontours_image = cv2.drawContours(image, sorted_contours, 0, contour_color, contour_thick)
+        
+            #print image
+            cv2.imshow("Image Window", wcontours_image)
+            cv2.waitKey(3)        
+        
+            #centroid of contours
+            M = cv2.moments(sorted_contours[0])
+            cx = int(M['m10']/M['m00'])
+
+            #print(cx)  
+
+            #PUBLISHING MOTION
+            #determining error
+            center = 200
+            error = center - cx  
+
+            #write motion command
+            kpa = 0.01
+
+            self.move_cmd.linear.x = 0.3
+            self.move_cmd.angular.z = kpa * error
+
+            #publish motion command
+            return True, self.move_cmd
+        
+        return False, self.move_cmd
+

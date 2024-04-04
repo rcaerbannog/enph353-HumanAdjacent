@@ -1,0 +1,4 @@
+<launch>
+	<node pkg = "controller" type = "line_follow.py" name = "image_reading" output = "screen">
+	</node> 
+</launch>
