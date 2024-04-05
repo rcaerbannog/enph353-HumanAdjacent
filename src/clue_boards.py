@@ -39,7 +39,6 @@ def check_clue_board(image):
     return False, image
 
 
-#use SIFT to see if cropped image is useful
 def good_clue(image):
     good = True
 
