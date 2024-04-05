@@ -8,10 +8,16 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge, CvBridgeError
 from line_follow import line_follow
+from clue_boards import check_clue_board
 
 class controller:
     #constructor
     def __init__(self):
+        #state machine
+        self.state = "line_follow"
+        self.counter = 0
+        self.magenta_counter = 0
+
         #create a subscriber object
         self.bridge = CvBridge()
         self.image_sub = rospy.Subscriber("/R1/pi_camera/image_raw", Image, self.callback)
@@ -30,12 +36,48 @@ class controller:
     def callback(self, data):
         cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
         
-        follow = line_follow()
+        # #only check state on 10th frame
+        # if self.counter >= 10:
+        #     self.state = check_state(cv_image)
+        #     self.counter = 0
+        # else:
+        #     self.counter += 1
         
-        move, move_cmd = follow.line_drive(cv_image)
-        #publish motion command
-        if move:
-            self.pub.publish(move_cmd)
+        #apply state
+        if self.state == "line_follow":
+            #check for clue board
+            clue_board, clueboard_image = check_clue_board(cv_image)
+            cv2.imshow("Clue Board", clueboard_image)
+            cv2.waitKey(3) 
+            print(clue_board)
+
+            follow = line_follow()
+            move, move_cmd = follow.line_drive(cv_image)
+
+            #publish motion command
+            if move:
+                self.pub.publish(move_cmd)
+
+        elif self.state == "cross_walk":
+            print("PEDESTRIAN!!!")
+
+        elif self.state == "grass":
+            print("ooooo grass")
+
+
+def check_state(image):
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    #check red
+    lower_red = np.array([0, 100, 100])
+    upper_red = np.array([10, 255, 255])
+
+    red_mask = cv2.inRange(hsv_image, lower_red, upper_red)
+
+    #check magenta
+
+    state = ""
+    return state
 
 
 if __name__ == '__main__':

@@ -13,7 +13,9 @@ class line_follow:
     def __init__(self):
         #initialize move command
         self.move_cmd = Twist()
-
+        self.previous_error = 0
+        self.int_error = 0
+        self.move = True
 
     #Line following code
     def line_drive(self, image):
@@ -60,17 +62,25 @@ class line_follow:
 
             #PUBLISHING MOTION
             #determining error
-            center = 200
+            center = 195
             error = center - cx  
+            dif_error = error - self.previous_error
+            self.int_error += error
 
             #write motion command
-            kpa = 0.01
+            kpa = 0.015
+            kda = 0.001
+            kia = 0.001
 
-            self.move_cmd.linear.x = 0.3
-            self.move_cmd.angular.z = kpa * error
+            self.move_cmd.linear.x = 0.25
+            self.move_cmd.angular.z = kpa * error + kda * dif_error + kia * self.int_error
+            self.move = True
+
+            self.previous_error = error
 
             #publish motion command
-            return True, self.move_cmd
-        
-        return False, self.move_cmd
+            return self.move, self.move_cmd
+        else:
+            self.move = False
+            return self.move, self.move_cmd
 
