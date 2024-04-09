@@ -21,9 +21,10 @@ class line_follow:
     def line_drive(self, image):
         #PROCESSING THE IMAGE
         #image width = 800, center = 400, height = 720
+        cropped_image = image[360:720, 0:800]
         
         #grayscale image
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
 
         #blur image (to remove noise)
         blur_image = cv2.blur(gray_image, (7,7))
@@ -48,11 +49,11 @@ class line_follow:
             #add green contours to the original OpenCV image
             contour_color = (0, 255, 0)
             contour_thick = 5
-            wcontours_image = cv2.drawContours(image, sorted_contours, 0, contour_color, contour_thick)
+            wcontours_image = cv2.drawContours(cropped_image, sorted_contours, 0, contour_color, contour_thick)
         
             #print image
-            cv2.imshow("Image Window", wcontours_image)
-            cv2.waitKey(3)        
+            # cv2.imshow("Image Window", wcontours_image)
+            # cv2.waitKey(3)        
         
             #centroid of contours
             M = cv2.moments(sorted_contours[0])
