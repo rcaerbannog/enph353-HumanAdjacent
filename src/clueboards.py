@@ -15,17 +15,18 @@ MIN_LETTER_HEIGHT = 20
 model = models.load_model('letter-recog-model.keras')
 
 def is_good_clueboard_contour(contour, in_frame):
-    MIN_HEIGHT = 130
     frame_dimY = in_frame.shape[0]
     frame_dimX = in_frame.shape[1]
     x, y, w, h = cv.boundingRect(contour)
     # Failure conditions: height too small, contour touches edge of screen (indicates partly out of frame)
-    return not (h < MIN_HEIGHT or x == 0 or y == 0 or x+w >= frame_dimX-1 or y+h >= frame_dimY-1)
+    CLUEBOARD_MIN_HEIGHT = 130
+    return not (h < CLUEBOARD_MIN_HEIGHT or x == 0 or y == 0 or x+w >= frame_dimX-1 or y+h >= frame_dimY-1)
 
 ## Call this
 def clueboard_img_from_frame(frame):
     DIM_Y = 400
     DIM_X = 600
+    CLUEBOARD_MIN_AREA = 10000
     
     frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
     #upper and lower blue bounds
@@ -36,7 +37,7 @@ def clueboard_img_from_frame(frame):
     mask = cv.inRange(frame_hsv, lower_blue, upper_blue)
     #find contours
     contours, hierarchy = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-    contours = filter(lambda x : cv.contourArea(x) >= 2500, contours)
+    contours = filter(lambda x : cv.contourArea(x) >= CLUEBOARD_MIN_AREA, contours)
     sorted_contours = tuple(sorted(contours, key = lambda x: cv.contourArea(x), reverse = True)) # largest to smallest contours
     
     # At the very least, we should detect an inner and outer contour of the blue border.
@@ -92,6 +93,8 @@ def box_contains_letter(bounding_rect):
     # If no letters are detected, an empty string ''. 
     # Correctness NOT guaranteed.
 # May see if can work on grayscale or BGR image for computational efficiency (but HSV is most robust due to brightness invariance)
+# NOTE: might implement attemped erosion of contours which look like 2 or 3 letters merged together
+# NOTE: optimizable: make all operations in terms of HSV image
 # @param img_BGR (np.ndarray) an image
 # @return (string) the line of text detected on the image 
 def text_from_line_image(img_BGR):
@@ -136,3 +139,23 @@ def clue_type_and_value(clueboard_img):
     clue_value = text_from_line_image(clue_value_img)
 
     return clue_type, clue_value
+
+# Strings is not empty
+# Obtaining consensus defined as winning a majority vote. (50% is not good enough -- if 4 entries, need at least 3 matching)
+# NOTE: if confident we tend to remove letters than add, may also be worth it to add subsequence checking
+def consensus(entries):
+    unique = {} # entries (entry, num of occurences)
+    for entry in entries:
+        if entry in unique:
+            unique[entry] += 1
+        else:
+            unique[entry] = 1
+    unique_list = list(unique)
+    unique_list.sort(key = lambda x : x[1], reverse=True)
+    mode, occurences = unique_list[0]
+    if occurences > len(entries) // 2:
+        return True, mode
+    else:
+        return False, None
+
+
