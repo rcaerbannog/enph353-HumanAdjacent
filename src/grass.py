@@ -18,7 +18,7 @@ class grass:
         self.move = True
 
     #Line following code
-    def line_drive(self, image):
+    def line_drive(self, image, threshold):
         #PROCESSING THE IMAGE
         #image width = 800, center = 400, height = 720
         
@@ -32,7 +32,7 @@ class grass:
         blurred_gray_image = cv2.GaussianBlur(gray_image, (5, 5), 0)
 
         #inverse binary threshold image
-        temp, binary_gray_image = cv2.threshold(blurred_gray_image, 175, 255, cv2.THRESH_BINARY) #uphill shade theshold = 155, regular threshold = 175
+        temp, binary_gray_image = cv2.threshold(blurred_gray_image, threshold, 255, cv2.THRESH_BINARY) #uphill shade theshold = 155, regular threshold = 175
 
         #FINDING THE LINE
         #find the contours of the binary image
@@ -53,18 +53,19 @@ class grass:
             contour_thick = 5
             wcontours_image = cv2.drawContours(cropped_image, sorted_contours, 0, contour_color, contour_thick)       
 
-            cv2.imshow("Cropped Window", binary_gray_image)
-            cv2.waitKey(3)
+            # cv2.imshow("Cropped Window", binary_gray_image)
+            # cv2.waitKey(3)
 
             if len(sorted_contours) >= 1:
                 #centroid of contours
                 M = cv2.moments(sorted_contours[0])
                 cx = int(M['m10']/M['m00'])
-                # print(cx)  
+                cy = int(M['m01']/M['m00'])
+                print(cy)  
                 
                 #print image
-                # cv2.imshow("Cropped Window", wcontours_image)
-                # cv2.waitKey(3)
+                cv2.imshow("Cropped Window", wcontours_image)
+                cv2.waitKey(3)
 
                 #PUBLISHING MOTION
                 #determining error
