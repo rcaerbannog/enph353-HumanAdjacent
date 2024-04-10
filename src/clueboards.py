@@ -12,21 +12,21 @@ LETTER_IMG_SHAPE = (LETTER_IMG_DIM_Y, LETTER_IMG_DIM_X)
 MIN_LETTER_HEIGHT = 20
 
 # IMPORT LETTER-RECOGNITION CNN
-model = models.load_model('letter-recog-model.keras')
+model = models.load_model('letter-recog-model.h5')
 
 def is_good_clueboard_contour(contour, in_frame):
     frame_dimY = in_frame.shape[0]
     frame_dimX = in_frame.shape[1]
     x, y, w, h = cv.boundingRect(contour)
     # Failure conditions: height too small, contour touches edge of screen (indicates partly out of frame)
-    CLUEBOARD_MIN_HEIGHT = 130
+    CLUEBOARD_MIN_HEIGHT = 80
     return not (h < CLUEBOARD_MIN_HEIGHT or x == 0 or y == 0 or x+w >= frame_dimX-1 or y+h >= frame_dimY-1)
 
 ## Call this
 def clueboard_img_from_frame(frame):
     DIM_Y = 400
     DIM_X = 600
-    CLUEBOARD_MIN_AREA = 10000
+    CLUEBOARD_MIN_AREA = 2500
     
     frame_hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
     #upper and lower blue bounds
@@ -150,8 +150,7 @@ def consensus(entries):
             unique[entry] += 1
         else:
             unique[entry] = 1
-    unique_list = list(unique)
-    unique_list.sort(key = lambda x : x[1], reverse=True)
+    unique_list = sorted(list(unique.items()), key = lambda x : x[1], reverse=True)
     mode, occurences = unique_list[0]
     if occurences > len(entries) // 2:
         return True, mode
