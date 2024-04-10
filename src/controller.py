@@ -58,7 +58,8 @@ class controller:
         if is_good_clue:
             clue_type, clue_value = clueboards.clue_type_and_value(clueboard_image)
             # TODO: check for good answer
-            self.score_tracker_msg.data = str('HMNADJ,CODE,'+ self.clueboard_counter + ',' + clue_value)
+            self.clueboard_counter = check_cluetype(clue_type)
+            self.score_tracker_msg.data = str('HMNADJ,CODE,'+ str(self.clueboard_counter) + ',' + clue_value)
             self.pub_score_tracker.publish(self.score_tracker_msg)
             print("compute_clueboard_YOLO: computed " + str((clue_type, clue_value)))
             return True
@@ -89,11 +90,12 @@ class controller:
                 # Maybe discard results with a certain amount of error?
                 # Consensus of images
                 have_type_consensus, clue_type = clueboards.consensus([result[0] for result in results])
-                have_value_consensus, clue_value = clueboards.consensus([result[0] for result in results])
+                have_value_consensus, clue_value = clueboards.consensus([result[1] for result in results])
 
                 # Submit clues
                 if have_value_consensus:
-                    self.score_tracker_msg.data = str('HMNADJ,CODE,'+ self.clueboard_counter + ',' + clue_value)
+                    self.clueboard_counter = check_cluetype(clue_type)
+                    self.score_tracker_msg.data = str('HMNADJ,CODE,'+ str(self.clueboard_counter) + ',' + clue_value)
                     self.pub_score_tracker.publish(self.score_tracker_msg)
                     print("compute_clueboard: OBTAINED VALUE CONSENSUS AND SUBMITTED: " + str((clue_type, clue_value)))
                     # TODO: If clue submitted, disable clueboard reading for X frames to reduce chance of double-image?
