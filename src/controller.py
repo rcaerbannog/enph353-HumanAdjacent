@@ -14,6 +14,7 @@ from pedestrian import pedestrian_crossing
 import datetime
 from grass import grass
 from yoda_follow import yoda_follow
+from tunnel_align import rectangle_parallel
 import clueboards
 
 class controller:
@@ -29,6 +30,10 @@ class controller:
         self.prev_good_clue = False
         self.prev_clueboard = None
         self.clueboard_counter = 1
+        self.turn_left = True
+        self.turn_count = 0
+        self.tunnel_count = 0
+        self.shade_count = 0
 
         #create a subscriber object
         self.bridge = CvBridge()
@@ -195,7 +200,7 @@ class controller:
 
             print("grass_follow")
             grass_follow = grass()
-            move, move_cmd = grass_follow.line_drive(cv_image)
+            move, move_cmd = grass_follow.line_drive(cv_image, 175)
 
             #publish motion command
             if move:
@@ -228,37 +233,94 @@ class controller:
             self.move_cmd.angular.z = -1.5
             self.move_cmd.linear.x = 0.0
             self.pub.publish(self.move_cmd)
-            rospy.sleep(1.25) 
+            rospy.sleep(1.4) 
 
             self.move_cmd.angular.z = 0.0
             self.move_cmd.linear.x = 0.5
             self.pub.publish(self.move_cmd)
-            rospy.sleep(1.25) 
+            rospy.sleep(1.15) 
+
+            self.move_cmd.angular.z = 1.5
+            self.move_cmd.linear.x = 0
+            self.pub.publish(self.move_cmd)
+            rospy.sleep(1.5)  
+
+            self.move_cmd.angular.z = 0.0
+            self.move_cmd.linear.x = 0.5
+            self.pub.publish(self.move_cmd)
+            rospy.sleep(1.325)
 
             self.move_cmd.angular.z = 1.5
             self.move_cmd.linear.x = 0.0
             self.pub.publish(self.move_cmd)
-            rospy.sleep(1.5) 
-
-            self.move_cmd.angular.z = 0.0
-            self.move_cmd.linear.x = 0.5
-            self.pub.publish(self.move_cmd)
-            rospy.sleep(1) 
-
-            self.move_cmd.angular.z = 1.5
-            self.move_cmd.linear.x = 0.0
-            self.pub.publish(self.move_cmd)
-            rospy.sleep(1.25) 
-
-            self.move_cmd.angular.z = 0.0
-            self.move_cmd.linear.x = 0.5
-            self.pub.publish(self.move_cmd)
-            rospy.sleep(2) 
+            rospy.sleep(1)
 
             self.move_cmd.angular.z = 0.0
             self.move_cmd.linear.x = 0.0
             self.pub.publish(self.move_cmd)
-            rospy.sleep(1000000000000)            
+            # rospy.sleep(1000000000000)
+
+            self.state = "tunnel_align"
+
+        #TUNNEL_ALIGN: aligns perpendicular to the magenta line to go straight through the tunnel
+        elif self.state == "tunnel_align":
+            print("tunnel_align")
+            if self.turn_left:
+                if self.turn_count <= 60:
+                    self.move_cmd.angular.z = 0.5
+                    self.move_cmd.linear.x = 0.0
+                    self.pub.publish(self.move_cmd)
+
+                    self.turn_count += 1
+                else:
+                    self.turn_left = False
+                    self.turn_count = 0
+            else:
+                if self.turn_count <= 60:
+                    self.move_cmd.angular.z = -0.5
+                    self.move_cmd.linear.x = 0.0
+                    self.pub.publish(self.move_cmd)
+
+                    self.turn_count += 1
+                else:
+                    self.turn_left = True
+                    self.turn_count = 0
+
+            if rectangle_parallel(cv_image):
+                print("parallel")
+                self.state = "tunnel_drive"
+
+        #TUNNEL_DRIVE: drive straight through the tunnel
+        elif self.state == "tunnel_drive":
+            print("tunnel_drive")
+            if self.tunnel_count <= 50:
+                self.move_cmd.angular.z = 0.0
+                self.move_cmd.linear.x = 0.5
+                self.pub.publish(self.move_cmd)
+                self.tunnel_count += 1  
+            else:
+                self.state = "shade_follow"
+                # self.move_cmd.angular.z = 0.0
+                # self.move_cmd.linear.x = 0.0
+                # self.pub.publish(self.move_cmd)
+                # rospy.sleep(1000000000000)   
+
+        #SHADE_FOLLOW: grass follow but with a different threshold due to shade
+        elif self.state == "shade_follow":
+            print("shade_follow")
+            if self.shade_count <= 100:
+                grass_follow = grass()
+                move, move_cmd = grass_follow.line_drive(cv_image, 155)
+
+                #publish motion command
+                if move:
+                    self.pub.publish(move_cmd)
+
+                self.shade_count += 1
+            else:
+                self.state = "grass_follow"                
+
+
 
         self.prev_image = cv_image
 
@@ -329,6 +391,15 @@ class controller:
                 if (cv2.moments(sorted_contours[0])['m00'] >= 10000):
                     return "tunnel"
 
+        if state == "shade_follow":
+            return "shade_follow"
+        
+        if state == "tunnel_drive":
+            return "tunnel_drive"
+
+        if state == "tunnel_align":
+            return "tunnel_align"
+        
         if state == "yoda_follow":
             return "yoda_follow"
                 
