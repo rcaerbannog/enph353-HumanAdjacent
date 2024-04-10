@@ -19,6 +19,7 @@ import clueboards
 
 DEBUG_SAVE_IMAGES = True
 check_clueboard_i = 1
+clue_types = {"SIZE":1, "VICTIM":2, "CRIME":3, "TIME":4, "PLACE":5, "MOTIVE":6, "WEAPON":7, "BANDIT":8}
 
 class controller:
     #constructor
@@ -95,7 +96,7 @@ class controller:
     ## Call this once in every state where you want to compute the last 3 images
     def compute_clueboard(self):
         if self.prev_good_clue:
-            if len(self.clueboard_img_queue) >= self.MIN_CLUEBOARD_IMGS: # Minimum number of good images
+            if len(self.clueboard_img_queue) >= self.MIN_CLUEBOARD_IMGS: # Minimum number of good images, > 0
                 # Compute values and obtain type + value, then pick best by consensus
                 # output is tuple (type, value)
                 # Perhaps stop the car while computing?
@@ -104,6 +105,8 @@ class controller:
                 # Maybe discard results with a certain amount of error?
                 # Consensus of images
                 have_type_consensus, clue_type = clueboards.consensus([result[0] for result in results])
+                if not have_type_consensus:
+                    clue_type = results[-1][0]
                 have_value_consensus, clue_value = clueboards.consensus([result[1] for result in results])
 
                 # Submit clues
@@ -416,24 +419,31 @@ class controller:
             return "grass_follow"
 
         return "line_follow"
+    
+def hamming_distance(str1, str2):
+    count = 0
+    for i in range(len(str1)):
+        if str1[i] != str2[i]:
+            count += 1
+    return count
 
-def check_cluetype(clue_type):
-    if clue_type == "SIZE":
-        return 1
-    elif clue_type == "VICTIM":
-        return 2
-    elif clue_type == "CRIME":
-        return 3
-    elif clue_type == "TIME":
-        return 4
-    elif clue_type == "PLACE":
-        return 5
-    elif clue_type == "MOTIVE":
-        return 6
-    elif clue_type == "WEAPON":
-        return 7
-    elif clue_type == "BANDIT":
-        return 8
+def check_cluetype(read_type):
+    if read_type in clue_types:
+        return clue_types[read_type]
+    else:
+        # Compute the closest Hamming distance to any type of the same length
+        types_of_same_length = list(filter(lambda x : len(read_type) == len(x), clue_types.keys()))
+        # Iterate over all letters
+        if (len(types_of_same_length) > 0):
+            hamming_distances = list(map(lambda x : hamming_distance(x, read_type), types_of_same_length))
+            min_hamming_dist_type = None
+            min_hamming_dist = len(read_type) + 1
+            for i in range(len(types_of_same_length)):
+                if hamming_distances[i] < min_hamming_dist:
+                    min_hamming_dist = hamming_distances[i]
+                    min_hamming_dist_type = types_of_same_length[i]
+            return clue_types[min_hamming_dist_type]
+    # Default: increment the count by 1
     return 0
 
 if __name__ == '__main__':
