@@ -17,6 +17,9 @@ from yoda_follow import yoda_follow
 from tunnel_align import rectangle_parallel
 import clueboards
 
+DEBUG_SAVE_IMAGES = True
+check_clueboard_i = 1
+
 class controller:
     #constructor
     def __init__(self):
@@ -52,6 +55,7 @@ class controller:
 
         self.clueboard_img_queue = []
         self.QUEUE_SIZE = 3
+        self.MIN_CLUEBOARD_IMGS = 2 # self.QUEUE_SIZE
 
     #################################
     ### CLUEBOARD READING METHODS ###
@@ -76,6 +80,11 @@ class controller:
         #check for clue board
         is_good_clue, clueboard_image = clueboards.clueboard_img_from_frame(frame)
         if is_good_clue:
+            if (DEBUG_SAVE_IMAGES):
+                file_name1 = "DEBUG_IMAGES/check_clueboard_frames/" + str(check_clueboard_i) + ".png"
+                file_name2 = "DEBUG_IMAGES/check_clueboard_warped/" + str(check_clueboard_i) + ".png"
+                cv2.imwrite(file_name1, frame)
+                cv2.imwrite(file_name2, clueboard_image)
             if len(self.clueboard_img_queue) >= self.QUEUE_SIZE: # Keep the last 3 images
                 self.clueboard_img_queue.pop(0) # pop HEAD of queue
             self.clueboard_img_queue.append(clueboard_image) # append to END of queue
@@ -86,7 +95,7 @@ class controller:
     ## Call this once in every state where you want to compute the last 3 images
     def compute_clueboard(self):
         if self.prev_good_clue:
-            if len(self.clueboard_img_queue) >= self.QUEUE_SIZE: # Minimum number of good images
+            if len(self.clueboard_img_queue) >= self.MIN_CLUEBOARD_IMGS: # Minimum number of good images
                 # Compute values and obtain type + value, then pick best by consensus
                 # output is tuple (type, value)
                 # Perhaps stop the car while computing?
