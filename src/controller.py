@@ -8,12 +8,13 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge, CvBridgeError
 from line_follow import line_follow
-from clue_boards import check_clue_board
+# from clue_boards import check_clue_board
 from pedestrian import pedestrian_crossing
 # from sift_and_cnn import clueboard_img_from_frame, clue_type_and_value
 import datetime
 from grass import grass
 from yoda_follow import yoda_follow
+import clueboards
 
 class controller:
     #constructor
@@ -43,6 +44,68 @@ class controller:
         self.score_tracker_msg = String()
         self.score_tracker_msg.data = str('HMNADJ,CODE,0,000')
         self.pub_score_tracker.publish(self.score_tracker_msg)
+
+        self.clueboard_img_queue = []
+        self.QUEUE_SIZE = 3
+
+    #################################
+    ### CLUEBOARD READING METHODS ###
+    #################################
+
+    ## From single frame, submit clue if good clue is found
+    def compute_clueboard_YOLO(self, frame):
+        is_good_clue, clueboard_image = clueboards.clueboard_img_from_frame(frame)
+        if is_good_clue:
+            clue_type, clue_value = clueboards.clue_type_and_value(clueboard_image)
+            # TODO: check for good answer
+            self.score_tracker_msg.data = str('HMNADJ,CODE,'+ self.clueboard_counter + ',' + clue_value)
+            self.pub_score_tracker.publish(self.score_tracker_msg)
+            print("compute_clueboard_YOLO: computed " + str((clue_type, clue_value)))
+            return True
+        print("compute_clueboard_YOLO: FAILED")
+        return False
+
+    ## Call this once in every state where you want to check if a frame has a clueboard (and add that clueboard image to the queue)
+    def check_for_clueboard(self, frame):
+        #check for clue board
+        is_good_clue, clueboard_image = clueboards.clueboard_img_from_frame(frame)
+        if is_good_clue:
+            if len(self.clueboard_img_queue) >= self.QUEUE_SIZE: # Keep the last 3 images
+                self.clueboard_img_queue.pop(0) # pop HEAD of queue
+            self.clueboard_img_queue.append(clueboard_image) # append to END of queue
+            self.prev_good_clue = True
+            print("check_for_clueboard: ")
+        return is_good_clue
+
+    ## Call this once in every state where you want to compute the last 3 images
+    def compute_clueboard(self):
+        if self.prev_good_clue:
+            if len(self.clueboard_img_queue) >= self.QUEUE_SIZE: # Minimum number of good images
+                # Compute values and obtain type + value, then pick best by consensus
+                # output is tuple (type, value)
+                # Perhaps stop the car while computing?
+                results = [clueboards.clue_type_and_value(img) for img in self.clueboard_img_queue]
+                print("compute_clueboard: " + str(results))
+                # Maybe discard results with a certain amount of error?
+                # Consensus of images
+                have_type_consensus, clue_type = clueboards.consensus([result[0] for result in results])
+                have_value_consensus, clue_value = clueboards.consensus([result[0] for result in results])
+
+                # Submit clues
+                if have_value_consensus:
+                    self.score_tracker_msg.data = str('HMNADJ,CODE,'+ self.clueboard_counter + ',' + clue_value)
+                    self.pub_score_tracker.publish(self.score_tracker_msg)
+                    print("compute_clueboard: OBTAINED VALUE CONSENSUS AND SUBMITTED: " + str((clue_type, clue_value)))
+                    # TODO: If clue submitted, disable clueboard reading for X frames to reduce chance of double-image?
+            else:
+                print(f"compute_clueboard: QUEUE NOT FILLED: ONLY {len(self.clueboard_img_queue)}/{self.QUEUE_SIZE} FRAMES IN A ROW")
+            # Wipe queue and flag
+            self.prev_good_clue = False
+            self.clueboard_img_queue.clear()
+
+    ################################
+    ### CALLBACK / STATE MACHINE ###
+    ################################
     
     def callback(self, data):
         cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
@@ -58,8 +121,8 @@ class controller:
         #LINE_FOLLOW: line following algorithm for the paved section of the competition
         if self.state == "line_follow":
             print("line_follow")
-            #check for clue board
-            clue_board, clueboard_image = check_clue_board(cv_image)
+            if not self.check_for_clueboard(cv_image):
+                self.compute_clueboard()            
 
             #publish clue to score tracker if it is a good clue board image
             # if clue_board:
@@ -125,7 +188,8 @@ class controller:
         
         #GRASS_FOLLOW: line following algorithm for the grass section
         elif self.state == "grass_follow":
-            clue_board, clueboard_image = check_clue_board(cv_image)
+            if not self.check_for_clueboard(cv_image):
+                self.compute_clueboard()     
 
             print("grass_follow")
             grass_follow = grass()
