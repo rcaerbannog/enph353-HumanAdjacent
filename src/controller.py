@@ -196,6 +196,7 @@ class controller:
 
             self.state = "tunnel_align"
 
+        #TUNNEL_ALIGN: aligns perpendicular to the magenta line to go straight through the tunnel
         elif self.state == "tunnel_align":
             print("tunnel_align")
             if self.turn_left:
@@ -223,6 +224,7 @@ class controller:
                 print("parallel")
                 self.state = "tunnel_drive"
 
+        #TUNNEL_DRIVE: drive straight through the tunnel
         elif self.state == "tunnel_drive":
             print("tunnel_drive")
             if self.tunnel_count <= 50:
@@ -237,6 +239,7 @@ class controller:
                 # self.pub.publish(self.move_cmd)
                 # rospy.sleep(1000000000000)   
 
+        #SHADE_FOLLOW: grass follow but with a different threshold due to shade
         elif self.state == "shade_follow":
             print("shade_follow")
             if self.shade_count <= 100:
