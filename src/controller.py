@@ -283,7 +283,7 @@ class controller:
             if not yoda_position(cv_image, self.prev_image) and self.yoda_counter >= 10:
                 print("yoda_spotted")
                 self.counter = 5
-                rospy.sleep(2)
+                rospy.sleep(3)
                 self.go = True
             
             self.yoda_counter += 1
@@ -318,6 +318,11 @@ class controller:
 
                 if stop:
                     print("stopped")
+                    self.move_cmd.angular.z = 0.0
+                    self.move_cmd.linear.x = 0.25
+                    self.pub.publish(self.move_cmd)
+                    rospy.sleep(0.55)
+
                     self.move_cmd.angular.z = 1.5
                     self.move_cmd.linear.x = 0.0
                     self.pub.publish(self.move_cmd)
@@ -397,9 +402,9 @@ class controller:
                 self.compute_clueboard()  
                 
             print("tunnel_drive")
-            if self.tunnel_count <= 50:
+            if self.tunnel_count <= 70:
                 self.move_cmd.angular.z = 0.0
-                self.move_cmd.linear.x = 0.5
+                self.move_cmd.linear.x = 0.35
                 self.pub.publish(self.move_cmd)
                 self.tunnel_count += 1  
             else:
@@ -408,13 +413,17 @@ class controller:
         #SHADE_FOLLOW: grass follow but with a different threshold due to shade
         elif self.state == "shade_follow":
             print("shade_follow")
-            if self.shade_count <= 90:
+            if self.shade_count <= 100:
                 grass_follow = grass()
                 move, move_cmd = grass_follow.line_drive(cv_image, 155)
 
                 #publish motion command
                 if move:
                     self.pub.publish(move_cmd)
+                else:
+                    self.move_cmd.angular.z = 0.0
+                    self.move_cmd.linear.x = 0.25
+                    self.pub.publish(self.move_cmd)
 
                 self.shade_count += 1
             else:
@@ -474,6 +483,7 @@ class controller:
                 self.pub.publish(self.move_cmd)
                 self.score_tracker_msg.data = str('HMNADJ,CODE,-1,000')
                 self.pub_score_tracker.publish(self.score_tracker_msg)
+                rospy.sleep(1)
                 self.counter = 5
                 self.state = "end"
 

@@ -48,9 +48,9 @@ class tunnel_follow:
             contours = [contour for contour in contours if int(cv2.moments(contour)['m00']) >= 500]
             #sort contours by leftmost center of mass
             sorted_contours = tuple(sorted(contours, key = lambda x: cv2.moments(x)['m10']/cv2.moments(x)['m00'], reverse=True))
-            #print(cv2.moments(sorted_contours[0])['m00'])
+            print(cv2.moments(sorted_contours[0])['m00'])
 
-            if cv2.moments(sorted_contours[0])['m00'] >= 10500:
+            if cv2.moments(sorted_contours[0])['m00'] <= 600:
                 stop = True   
 
             #add green contours to the original OpenCV image
