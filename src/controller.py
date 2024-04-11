@@ -394,12 +394,15 @@ class controller:
         #TUNNEL_DRIVE: drive straight through the tunnel
         elif self.state == "tunnel_drive":
             if not self.check_for_clueboard(cv_image):
+                # Since this is a hardcoded section, time delay of clueboard checking becomes significant. Stop.
+                # self.move_cmd.angular.z = 0.0
+                # self.move_cmd.linear.x = 0.0
                 self.compute_clueboard()  
                 
             print("tunnel_drive")
-            if self.tunnel_count <= 50:
+            if self.tunnel_count <= 100:
                 self.move_cmd.angular.z = 0.0
-                self.move_cmd.linear.x = 0.5
+                self.move_cmd.linear.x = 0.25
                 self.pub.publish(self.move_cmd)
                 self.tunnel_count += 1  
             else:
