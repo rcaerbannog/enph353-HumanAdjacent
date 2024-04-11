@@ -18,13 +18,13 @@ from tunnel_align import rectangle_parallel
 import clueboards
 
 DEBUG_SAVE_IMAGES = True
-check_clueboard_i = 1
 clue_types = {"SIZE":1, "VICTIM":2, "CRIME":3, "TIME":4, "PLACE":5, "MOTIVE":6, "WEAPON":7, "BANDIT":8}
 
 class controller:
     #constructor
     def __init__(self):
         #state machine
+        self.check_clueboard_i = 1
         self.state = "line_follow" #RESET TO "line_follow"
         self.counter = 0
         self.magenta_counter = 1 #RESET to 1
@@ -33,7 +33,7 @@ class controller:
         self.crossed = False #RESET TO FALSE
         self.prev_good_clue = False
         self.prev_clueboard = None
-        self.clueboard_counter = 1
+        self.clueboard_counter = 0
         self.turn_left = True
         self.turn_count = 0
         self.tunnel_count = 0
@@ -68,7 +68,7 @@ class controller:
         if is_good_clue:
             clue_type, clue_value = clueboards.clue_type_and_value(clueboard_image)
             # TODO: check for good answer
-            self.clueboard_counter = check_cluetype(clue_type)
+            self.clueboard_counter = check_cluetype(clue_type, self.clueboard_counter)
             self.score_tracker_msg.data = str('HMNADJ,CODE,'+ str(self.clueboard_counter) + ',' + clue_value)
             self.pub_score_tracker.publish(self.score_tracker_msg)
             print("compute_clueboard_YOLO: computed " + str((clue_type, clue_value)))
@@ -82,10 +82,11 @@ class controller:
         is_good_clue, clueboard_image = clueboards.clueboard_img_from_frame(frame)
         if is_good_clue:
             if (DEBUG_SAVE_IMAGES):
-                file_name1 = "DEBUG_IMAGES/check_clueboard_frames/" + str(check_clueboard_i) + ".png"
-                file_name2 = "DEBUG_IMAGES/check_clueboard_warped/" + str(check_clueboard_i) + ".png"
+                file_name1 = "DEBUG_IMAGES/check_clueboard_frames/" + str(self.check_clueboard_i) + ".png"
+                file_name2 = "DEBUG_IMAGES/check_clueboard_warped/" + str(self.check_clueboard_i) + ".png"
                 cv2.imwrite(file_name1, frame)
                 cv2.imwrite(file_name2, clueboard_image)
+                self.check_clueboard_i += 1
             if len(self.clueboard_img_queue) >= self.QUEUE_SIZE: # Keep the last 3 images
                 self.clueboard_img_queue.pop(0) # pop HEAD of queue
             self.clueboard_img_queue.append(clueboard_image) # append to END of queue
@@ -111,7 +112,7 @@ class controller:
 
                 # Submit clues
                 if have_value_consensus:
-                    self.clueboard_counter = check_cluetype(clue_type)
+                    self.clueboard_counter = check_cluetype(clue_type, self.clueboard_counter)
                     self.score_tracker_msg.data = str('HMNADJ,CODE,'+ str(self.clueboard_counter) + ',' + clue_value)
                     self.pub_score_tracker.publish(self.score_tracker_msg)
                     print("compute_clueboard: OBTAINED VALUE CONSENSUS AND SUBMITTED: " + str((clue_type, clue_value)))
@@ -420,14 +421,7 @@ class controller:
 
         return "line_follow"
     
-def hamming_distance(str1, str2):
-    count = 0
-    for i in range(len(str1)):
-        if str1[i] != str2[i]:
-            count += 1
-    return count
-
-def check_cluetype(read_type):
+def check_cluetype(read_type, current_clueboard_count):
     if read_type in clue_types:
         return clue_types[read_type]
     else:
@@ -443,8 +437,15 @@ def check_cluetype(read_type):
                     min_hamming_dist = hamming_distances[i]
                     min_hamming_dist_type = types_of_same_length[i]
             return clue_types[min_hamming_dist_type]
-    # Default: increment the count by 1
-    return 0
+    # Cannot identify clue
+    return current_clueboard_count
+    
+def hamming_distance(str1, str2):
+    count = 0
+    for i in range(len(str1)):
+        if str1[i] != str2[i]:
+            count += 1
+    return count
 
 if __name__ == '__main__':
     #initialize node
