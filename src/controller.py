@@ -33,7 +33,7 @@ class controller:
         self.truck_check = False 
         self.prev_good_clue = False
         self.prev_clueboard = None
-        self.clueboard_counter = 1
+        self.clueboard_counter = 0
         self.yoda_counter = 0
         self.go = False
         self.turn_left = True
@@ -50,6 +50,7 @@ class controller:
         
         #create a movement publisher object
         self.move_cmd = Twist()
+        self.slow_move_cmd = Twist()
         self.pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=1)
 
         #create a scoretracker publisher object
@@ -70,9 +71,14 @@ class controller:
     def compute_clueboard_YOLO(self, frame):
         is_good_clue, clueboard_image = clueboards.clueboard_img_from_frame(frame)
         if is_good_clue:
+            # Stop robot while computing
+            # self.move_cmd.angular.z = 0.0
+            # self.move_cmd.linear.x = 0.0
+            # self.pub.publish(self.move_cmd)
             clue_type, clue_value = clueboards.clue_type_and_value(clueboard_image)
             # TODO: check for good answer
-            self.clueboard_counter = check_cluetype(clue_type)
+            read_clue_id = check_cluetype(clue_type)
+            self.clueboard_counter = self.clueboard_counter + 1 if read_clue_id == 0 else read_clue_id
             self.score_tracker_msg.data = str('HMNADJ,CODE,'+ str(self.clueboard_counter) + ',' + clue_value)
             self.pub_score_tracker.publish(self.score_tracker_msg)
             print("compute_clueboard_YOLO: computed " + str((clue_type, clue_value)))
@@ -98,6 +104,11 @@ class controller:
     def compute_clueboard(self):
         if self.prev_good_clue:
             if len(self.clueboard_img_queue) >= self.QUEUE_SIZE: # Minimum number of good images
+                # Stop robot while computing. (Note: will already be slowed by slow_move_cmd, currently half-speed until after this is run)
+                # self.move_cmd.angular.z = 0.0
+                # self.move_cmd.linear.x = 0.0
+                # self.pub.publish(self.move_cmd)
+
                 # Compute values and obtain type + value, then pick best by consensus
                 # output is tuple (type, value)
                 # Perhaps stop the car while computing?
@@ -110,7 +121,8 @@ class controller:
 
                 # Submit clues
                 if have_value_consensus:
-                    self.clueboard_counter = check_cluetype(clue_type)
+                    read_clue_id = check_cluetype(clue_type)
+                    self.clueboard_counter = self.clueboard_counter + 1 if read_clue_id == 0 else read_clue_id
                     self.score_tracker_msg.data = str('HMNADJ,CODE,'+ str(self.clueboard_counter) + ',' + clue_value)
                     self.pub_score_tracker.publish(self.score_tracker_msg)
                     print("compute_clueboard: OBTAINED VALUE CONSENSUS AND SUBMITTED: " + str((clue_type, clue_value)))
@@ -120,6 +132,18 @@ class controller:
             # Wipe queue and flag
             self.prev_good_clue = False
             self.clueboard_img_queue.clear()
+
+    ## Call to publish the correct command velocity. (Will publish half-speed if clueboard reading. DOES NOT MUTATE self.move_cmd)
+    # Currently applied in line_follow and grass_follow
+    def apply_move(self, local_move_cmd):
+        # clueboard reading is called first, so self.prev_good_clue is updated with the latest frame
+        if self.prev_good_clue:
+            self.slow_move_cmd.angular.z = local_move_cmd.angular.z / 2
+            self.slow_move_cmd.linear.x = local_move_cmd.linear.x / 2
+            self.pub.publish(self.slow_move_cmd)
+        else:
+            self.pub.publish(local_move_cmd)
+            
 
     ################################
     ### CALLBACK / STATE MACHINE ###
@@ -147,7 +171,8 @@ class controller:
             move, move_cmd = follow.line_drive(cv_image)
 
             if move:
-                self.pub.publish(move_cmd)
+                # self.pub.publish(self.move_cmd)
+                self.apply_move(move_cmd)
 
         #CROSS_WALK: stops until motion is sensed then moves forward for 2.5 seconds
         elif self.state == "cross_walk":
@@ -188,7 +213,7 @@ class controller:
         elif self.state == "grass":
             print("oooooo grass")
             #move past magenta line
-            self.move_cmd.angular.z = -0.2
+            self.move_cmd.angular.z = -0.5
             self.move_cmd.linear.x = 0.25
             self.pub.publish(self.move_cmd)
             rospy.sleep(1)
@@ -208,7 +233,8 @@ class controller:
 
             #publish motion command
             if move:
-                self.pub.publish(move_cmd)
+                # self.pub.publish(self.move_cmd)
+                self.apply_move(move_cmd)
         
         #YODA: turn 90 degrees to face the tunnel
         elif self.state == "yoda":
@@ -338,8 +364,9 @@ class controller:
                 self.state = "hill_follow"     
 
         elif self.state == "hill_follow":
-            if not self.check_for_clueboard(cv_image):
-                self.compute_clueboard()     
+            # NOTE: There is no clueboard on the hill, only at the top.
+            # if not self.check_for_clueboard(cv_image):
+            #     self.compute_clueboard()     
 
             print("hill_follow")
             
@@ -510,24 +537,26 @@ class controller:
             return "grass_follow"
 
         return "line_follow"
+    
+def hamming_distance(str1, str2):
+    count = 0
+    for i in range(len(str1)):
+        if str1[i] != str2[i]:
+            count += 1
+    return count
 
 def check_cluetype(clue_type):
-    if clue_type == "SIZE":
-        return 1
-    elif clue_type == "VICTIM":
-        return 2
-    elif clue_type == "CRIME":
-        return 3
-    elif clue_type == "TIME":
-        return 4
-    elif clue_type == "PLACE":
-        return 5
-    elif clue_type == "MOTIVE":
-        return 6
-    elif clue_type == "WEAPON":
-        return 7
-    elif clue_type == "BANDIT":
-        return 8
+    clue_types = {"SIZE":1, "VICTIM":2, "CRIME":3, "TIME":4, "PLACE":5, "MOTIVE":6, "WEAPON":7, "BANDIT":8}
+    if clue_type in clue_types:
+        return clue_types[clue_type]
+    # Compute the closest Hamming distance to any type of the same length
+    types_of_same_length = list(filter(lambda x : len(clue_type) == len(x), clue_types.keys()))
+    if (len(types_of_same_length) > 0):
+        # hamming_distances = list(map(lambda x : hamming_distance(x, clue_type), types_of_same_length))
+        # return the first clue with a Hamming distance of 1 or less, else let fell through to the end
+        for clue_type2 in types_of_same_length:
+            if hamming_distance(clue_type, clue_type2) <= 1:
+                return clue_types[clue_type2]
     return 0
 
 if __name__ == '__main__':
