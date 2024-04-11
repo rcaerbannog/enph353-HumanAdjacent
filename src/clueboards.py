@@ -11,6 +11,9 @@ LETTER_IMG_DIM_X = 64
 LETTER_IMG_SHAPE = (LETTER_IMG_DIM_Y, LETTER_IMG_DIM_X)
 MIN_LETTER_HEIGHT = 20
 
+DEBUG_GLOBAL = True
+DEBUG_WIN_CLUEBOARD = "DEBUG_WIN_CLUEBOARD"
+
 # IMPORT LETTER-RECOGNITION CNN
 model = models.load_model('letter-recog-model.h5')
 
@@ -121,7 +124,12 @@ def text_from_line_image(img_BGR):
 
     letter_imgs_arr = np.array(letter_imgs).reshape(-1, LETTER_IMG_DIM_Y, LETTER_IMG_DIM_X)
     text = model_wrapper(letter_imgs_arr)
-    return text
+
+    if (DEBUG_GLOBAL):
+        debug_slice = img_mask
+        for bounding_rect in bounding_rects_ext:
+            cv.rectangle(img=debug_slice, rec=bounding_rect, color=128, thickness=3)
+    return text, img_mask
 
 ## Clue type and value from clueboard image in same shape as `clue-banner-filled.png`. 
 # Image must be SIFTed to match clueboard template size. 
@@ -135,8 +143,14 @@ def clue_type_and_value(clueboard_img):
     clue_type_img = clueboard_img[35:115, 240:580]
     clue_value_img = clueboard_img[255:335, 20:580]
 
-    clue_type = text_from_line_image(clue_type_img)
-    clue_value = text_from_line_image(clue_value_img)
+    clue_type, debug_slice_type = text_from_line_image(clue_type_img)
+    clue_value, debug_slice_value = text_from_line_image(clue_value_img)
+    if (DEBUG_GLOBAL):
+        debug_image = cv.cvtColor(clueboard_img, cv.COLOR_BGR2GRAY)
+        debug_image[35:115, 240:580] = debug_slice_type
+        debug_image[255:335, 20:580] = debug_slice_value
+        cv.imshow(DEBUG_WIN_CLUEBOARD, debug_image)
+        cv.waitKey(3)
 
     return clue_type, clue_value
 
