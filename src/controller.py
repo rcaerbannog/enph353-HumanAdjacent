@@ -23,7 +23,7 @@ class controller:
     #constructor
     def __init__(self):
         #state machine
-        self.state = "yoda_follow" #RESET TO "line_follow"
+        self.state = "line_follow" #RESET TO "line_follow"
         self.counter = 0
         self.magenta_counter = 1 #RESET to 1
         self.prev_image = None
