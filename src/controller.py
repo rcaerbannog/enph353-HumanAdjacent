@@ -16,24 +16,33 @@ from grass import grass
 from yoda_follow import yoda_follow
 from tunnel_align import rectangle_parallel
 import clueboards
+from truck import truck_position
+from yoda import yoda_position
 
 class controller:
     #constructor
     def __init__(self):
         #state machine
-        self.state = "line_follow" #RESET TO "line_follow"
+        self.state = "yoda_follow" #RESET TO "line_follow"
         self.counter = 0
         self.magenta_counter = 1 #RESET to 1
         self.prev_image = None
         self.cross_counter = 0
         self.crossed = False #RESET TO FALSE
+        self.truck_counter = 0
+        self.truck_check = False 
         self.prev_good_clue = False
         self.prev_clueboard = None
         self.clueboard_counter = 1
+        self.yoda_counter = 0
+        self.go = False
         self.turn_left = True
         self.turn_count = 0
+        self.tunnel_align_count = 0
         self.tunnel_count = 0
         self.shade_count = 0
+        self.hill_count = 0
+        self.top_count = 0
 
         #create a subscriber object
         self.bridge = CvBridge()
@@ -76,6 +85,8 @@ class controller:
         #check for clue board
         is_good_clue, clueboard_image = clueboards.clueboard_img_from_frame(frame)
         if is_good_clue:
+            # file_name = "good_clue_" + str(datetime.datetime.now()) + ".jpg" 
+            # cv2.imwrite(file_name, frame)
             if len(self.clueboard_img_queue) >= self.QUEUE_SIZE: # Keep the last 3 images
                 self.clueboard_img_queue.pop(0) # pop HEAD of queue
             self.clueboard_img_queue.append(clueboard_image) # append to END of queue
@@ -131,24 +142,6 @@ class controller:
             if not self.check_for_clueboard(cv_image):
                 self.compute_clueboard()            
 
-            #publish clue to score tracker if it is a good clue board image
-            # if clue_board:
-            #     file_name = "good_clue_" + str(datetime.datetime.now()) + ".jpg" 
-            #     cv2.imwrite(file_name, clueboard_image)
-                # print('entered if statement')
-                # cropped_clueboard = clueboard_img_from_frame(clueboard_image)
-                # cv2.imshow("cropped clue", cropped_clueboard)
-                # cv2.waitKey(3)
-                # print(cropped_clueboard.shape)
-                # clue_type, clue_value = clue_type_and_value(cropped_clueboard)
-                # self.clueboard_counter = check_cluetype(clue_type)
-                # self.score_tracker_msg.data = str('HMNADJ,CODE,'+ self.clueboard_counter + ',' + clue_value)
-                # self.pub_score_tracker.publish(self.score_tracker_msg)
-
-            #set previous clueboard to current clueboard
-            # self.prev_good_clue = clue_board
-            # self.prev_clueboard = clueboard_image
-
             #compute and publish move_cmd
             follow = line_follow()
             move, move_cmd = follow.line_drive(cv_image)
@@ -180,6 +173,17 @@ class controller:
 
             self.cross_counter += 1
 
+        elif self.state == "truck":
+            print("truck")
+            if truck_position(cv_image and self.truck_counter >= 10):
+                self.state = "line_follow"
+                self.truck_check = True
+            else:
+                self.move_cmd.angular.z = 0
+                self.move_cmd.linear.x = 0.0
+                self.pub.publish(self.move_cmd)
+                self.truck_counter += 1
+                
         #GRASS: Transition state between pavement line following and grass line following
         elif self.state == "grass":
             print("oooooo grass")
@@ -227,6 +231,16 @@ class controller:
             if move:
                 self.pub.publish(move_cmd)
 
+        elif self.state == "find_yoda":
+            print("find_yoda")
+            if not yoda_position(cv_image, self.prev_image) and self.yoda_counter >= 10:
+                print("yoda_spotted")
+                self.counter = 5
+                rospy.sleep(2)
+                self.go = True
+            
+            self.yoda_counter += 1
+
         #TUNNEL: transition to the entrance of the tunnel
         elif self.state == "tunnel":
             print("tunnel")
@@ -235,6 +249,14 @@ class controller:
             self.pub.publish(self.move_cmd)
             rospy.sleep(1.4) 
 
+            self.move_cmd.angular.z = 0.0
+            self.move_cmd.linear.x = 0.0
+            self.pub.publish(self.move_cmd) 
+
+            self.state = "find_yoda"
+
+        elif self.state == "tunnel_end":
+            print("tunnel_end")
             self.move_cmd.angular.z = 0.0
             self.move_cmd.linear.x = 0.5
             self.pub.publish(self.move_cmd)
@@ -253,14 +275,9 @@ class controller:
             self.move_cmd.angular.z = 1.5
             self.move_cmd.linear.x = 0.0
             self.pub.publish(self.move_cmd)
-            rospy.sleep(1)
-
-            self.move_cmd.angular.z = 0.0
-            self.move_cmd.linear.x = 0.0
-            self.pub.publish(self.move_cmd)
-            # rospy.sleep(1000000000000)
-
-            self.state = "tunnel_align"
+            rospy.sleep(1.1)
+            
+            self.counter = 5
 
         #TUNNEL_ALIGN: aligns perpendicular to the magenta line to go straight through the tunnel
         elif self.state == "tunnel_align":
@@ -286,12 +303,16 @@ class controller:
                     self.turn_left = True
                     self.turn_count = 0
 
-            if rectangle_parallel(cv_image):
+            if rectangle_parallel(cv_image) and self.tunnel_align_count >= 10:
                 print("parallel")
                 self.state = "tunnel_drive"
+            self.tunnel_align_count += 1
 
         #TUNNEL_DRIVE: drive straight through the tunnel
         elif self.state == "tunnel_drive":
+            if not self.check_for_clueboard(cv_image):
+                self.compute_clueboard()  
+                
             print("tunnel_drive")
             if self.tunnel_count <= 50:
                 self.move_cmd.angular.z = 0.0
@@ -299,16 +320,12 @@ class controller:
                 self.pub.publish(self.move_cmd)
                 self.tunnel_count += 1  
             else:
-                self.state = "shade_follow"
-                # self.move_cmd.angular.z = 0.0
-                # self.move_cmd.linear.x = 0.0
-                # self.pub.publish(self.move_cmd)
-                # rospy.sleep(1000000000000)   
+                self.state = "shade_follow"  
 
         #SHADE_FOLLOW: grass follow but with a different threshold due to shade
         elif self.state == "shade_follow":
             print("shade_follow")
-            if self.shade_count <= 100:
+            if self.shade_count <= 90:
                 grass_follow = grass()
                 move, move_cmd = grass_follow.line_drive(cv_image, 155)
 
@@ -318,8 +335,67 @@ class controller:
 
                 self.shade_count += 1
             else:
-                self.state = "grass_follow"                
+                self.state = "hill_follow"     
 
+        elif self.state == "hill_follow":
+            if not self.check_for_clueboard(cv_image):
+                self.compute_clueboard()     
+
+            print("hill_follow")
+            
+            if self.hill_count <= 350:
+                grass_follow = grass()
+                move, move_cmd = grass_follow.line_drive(cv_image, 175)
+
+                #publish motion command
+                if move:
+                    self.pub.publish(move_cmd)
+
+                self.hill_count += 1
+                print(self.hill_count)
+            else:
+                self.counter = 5
+                self.state = "top_turn"
+
+        elif self.state == "top_turn":
+            print("top_turn")
+            self.move_cmd.angular.z = 0.0
+            self.move_cmd.linear.x = 0.25
+            self.pub.publish(self.move_cmd)
+            rospy.sleep(2.5)
+
+            self.move_cmd.angular.z = 1.5
+            self.move_cmd.linear.x = 0.0
+            self.pub.publish(self.move_cmd)
+            rospy.sleep(1.3)
+
+            self.counter = 5
+            self.state = "top"
+
+        elif self.state == "top":
+            print("top")
+            if self.top_count <= 85:
+                if not self.check_for_clueboard(cv_image):
+                    self.compute_clueboard()  
+
+                self.move_cmd.angular.z = 0.0
+                self.move_cmd.linear.x = 0.25
+                self.pub.publish(self.move_cmd)
+
+                self.top_count += 1
+            else:
+                if (self.prev_good_clue):
+                    self.compute_clueboard()
+                self.move_cmd.angular.z = 0.0
+                self.move_cmd.linear.x = 0.0
+                self.pub.publish(self.move_cmd)
+                self.score_tracker_msg.data = str('HMNADJ,CODE,-1,000')
+                self.pub_score_tracker.publish(self.score_tracker_msg)
+                self.counter = 5
+                self.state = "end"
+
+        elif self.state == "end":
+            print("DONE \(^o^)/")
 
 
         self.prev_image = cv_image
@@ -390,7 +466,34 @@ class controller:
             if (len(sorted_contours) >= 1):
                 if (cv2.moments(sorted_contours[0])['m00'] >= 10000):
                     return "tunnel"
+                
+        elif state == "line_follow" and self.clueboard_counter == 3 and not self.truck_check:
+            return "truck"
+        
+        elif state == "find_yoda" and self.go:
+            return "tunnel_end"
+        
+        elif state == "tunnel_end":
+            return "tunnel_align"
 
+        if state == "end":
+            return "end"
+
+        if state == "top":
+            return "top"
+        
+        if state == "top_turn":
+            return "top_turn"
+
+        if state == "find_yoda":
+            return "find_yoda"
+
+        if state == "hill_follow":
+            return "hill_follow"
+        
+        if state == "truck":
+            return "truck"
+        
         if state == "shade_follow":
             return "shade_follow"
         

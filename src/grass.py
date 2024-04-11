@@ -61,7 +61,7 @@ class grass:
                 M = cv2.moments(sorted_contours[0])
                 cx = int(M['m10']/M['m00'])
                 cy = int(M['m01']/M['m00'])
-                print(cy)  
+                # print(cy)  
                 
                 #print image
                 cv2.imshow("Cropped Window", wcontours_image)
