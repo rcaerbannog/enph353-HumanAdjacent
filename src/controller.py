@@ -18,12 +18,13 @@ from tunnel_align import rectangle_parallel
 import clueboards
 from truck import truck_position
 from yoda import yoda_position
+from tunnel import tunnel_follow
 
 class controller:
     #constructor
     def __init__(self):
         #state machine
-        self.state = "truck" #RESET TO "line_follow"
+        self.state = "line_follow" #RESET TO "line_follow"
         self.counter = 0
         self.magenta_counter = 1 #RESET to 1
         self.prev_image = None
@@ -40,6 +41,7 @@ class controller:
         self.turn_left = True
         self.turn_count = 0
         self.tunnel_align_count = 0
+        self.tunnel_follow_count = 0
         self.tunnel_count = 0
         self.shade_count = 0
         self.hill_count = 0
@@ -118,6 +120,8 @@ class controller:
                 # Maybe discard results with a certain amount of error?
                 # Consensus of images
                 have_type_consensus, clue_type = clueboards.consensus([result[0] for result in results])
+                if (not have_type_consensus):
+                    clue_type = results[-1][0]
                 have_value_consensus, clue_value = clueboards.consensus([result[1] for result in results])
 
                 # Submit clues
@@ -164,6 +168,7 @@ class controller:
         #LINE_FOLLOW: line following algorithm for the paved section of the competition
         if self.state == "line_follow":
             print("line_follow")
+            print(self.clueboard_counter)
             if not self.check_for_clueboard(cv_image):
                 self.compute_clueboard()            
 
@@ -297,6 +302,37 @@ class controller:
 
             self.state = "find_yoda"
 
+        elif self.state == "tunnel_follow":
+            print("tunnel_follow")
+            
+            if self.tunnel_follow_count <= 50:
+                #compute and publish move_cmd
+                follow = tunnel_follow()
+                stop, move, move_cmd = follow.tunnel_drive(cv_image)
+
+                if move:
+                    self.pub.publish(self.move_cmd)
+                    self.apply_move(move_cmd)
+                
+                self.tunnel_follow_count += 1
+
+                if stop:
+                    print("stopped")
+                    self.move_cmd.angular.z = 1.5
+                    self.move_cmd.linear.x = 0.0
+                    self.pub.publish(self.move_cmd)
+                    rospy.sleep(1.0)
+                    self.counter = 5
+                    self.state = "tunnel_align"                    
+            else:
+                print("stopped")
+                self.move_cmd.angular.z = 1.5
+                self.move_cmd.linear.x = 0.0
+                self.pub.publish(self.move_cmd)
+                rospy.sleep(1.0)
+                self.counter = 5
+                self.state = "tunnel_align"
+
         elif self.state == "tunnel_end":
             print("tunnel_end")
             self.move_cmd.angular.z = 0.0
@@ -309,15 +345,20 @@ class controller:
             self.pub.publish(self.move_cmd)
             rospy.sleep(1.5)  
 
-            self.move_cmd.angular.z = 0.0
-            self.move_cmd.linear.x = 0.5
-            self.pub.publish(self.move_cmd)
-            rospy.sleep(1.325)
+            # self.move_cmd.angular.z = 0.0
+            # self.move_cmd.linear.x = 0
+            # self.pub.publish(self.move_cmd)
+            # rospy.sleep(10000000000)
 
-            self.move_cmd.angular.z = 1.5
-            self.move_cmd.linear.x = 0.0
-            self.pub.publish(self.move_cmd)
-            rospy.sleep(1.1)
+            # self.move_cmd.angular.z = 0.0
+            # self.move_cmd.linear.x = 0.5
+            # self.pub.publish(self.move_cmd)
+            # rospy.sleep(1.325)
+
+            # self.move_cmd.angular.z = 1.5
+            # self.move_cmd.linear.x = 0.0
+            # self.pub.publish(self.move_cmd)
+            # rospy.sleep(1.1)
             
             self.counter = 5
 
@@ -395,7 +436,6 @@ class controller:
                     self.pub.publish(move_cmd)
 
                 self.hill_count += 1
-                print(self.hill_count)
             else:
                 self.counter = 5
                 self.state = "top_turn"
@@ -509,15 +549,18 @@ class controller:
             if (len(sorted_contours) >= 1):
                 if (cv2.moments(sorted_contours[0])['m00'] >= 10000):
                     return "tunnel"
-                
-        elif state == "line_follow" and self.clueboard_counter == 3 and not self.truck_check:
-            return "truck_align"
         
         elif state == "find_yoda" and self.go:
             return "tunnel_end"
         
         elif state == "tunnel_end":
-            return "tunnel_align"
+            return "tunnel_follow"
+
+        if state == "line_follow" and self.clueboard_counter == 3 and not self.truck_check:
+            return "truck_align"
+
+        if state == "tunnel_follow":
+            return "tunnel_follow"
 
         if state == "truck_align":
             return "truck_align"
@@ -565,6 +608,7 @@ def hamming_distance(str1, str2):
     return count
 
 def check_cluetype(clue_type):
+    print("check_cluetype on: " + str(clue_type))
     clue_types = {"SIZE":1, "VICTIM":2, "CRIME":3, "TIME":4, "PLACE":5, "MOTIVE":6, "WEAPON":7, "BANDIT":8}
     if clue_type in clue_types:
         return clue_types[clue_type]
