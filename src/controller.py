@@ -23,12 +23,13 @@ class controller:
     #constructor
     def __init__(self):
         #state machine
-        self.state = "line_follow" #RESET TO "line_follow"
+        self.state = "truck" #RESET TO "line_follow"
         self.counter = 0
         self.magenta_counter = 1 #RESET to 1
         self.prev_image = None
         self.cross_counter = 0
         self.crossed = False #RESET TO FALSE
+        self.truck_align_count = 0
         self.truck_counter = 0
         self.truck_check = False 
         self.prev_good_clue = False
@@ -198,9 +199,24 @@ class controller:
 
             self.cross_counter += 1
 
+        elif self.state == "truck_align":
+            if self.truck_align_count <= 50:
+                follow = line_follow()
+                move, move_cmd = follow.line_drive(cv_image)
+
+                if move:
+                    self.pub.publish(move_cmd)
+                
+                self.truck_align_count += 1
+            else:
+                self.counter = 5
+                self.state = "truck"
+
         elif self.state == "truck":
             print("truck")
-            if truck_position(cv_image and self.truck_counter >= 10):
+            if truck_position(cv_image, self.prev_image) and self.truck_counter >= 10:
+                rospy.sleep(1)
+                self.counter = 5
                 self.state = "line_follow"
                 self.truck_check = True
             else:
@@ -367,7 +383,7 @@ class controller:
             # NOTE: There is no clueboard on the hill, only at the top.
             # if not self.check_for_clueboard(cv_image):
             #     self.compute_clueboard()     
-
+            
             print("hill_follow")
             
             if self.hill_count <= 350:
@@ -495,13 +511,16 @@ class controller:
                     return "tunnel"
                 
         elif state == "line_follow" and self.clueboard_counter == 3 and not self.truck_check:
-            return "truck"
+            return "truck_align"
         
         elif state == "find_yoda" and self.go:
             return "tunnel_end"
         
         elif state == "tunnel_end":
             return "tunnel_align"
+
+        if state == "truck_align":
+            return "truck_align"
 
         if state == "end":
             return "end"
