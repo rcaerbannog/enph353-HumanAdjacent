@@ -74,7 +74,7 @@ def model_wrapper(letter_imgs):
         predictions = model.predict(letter_imgs)
         text = ''
         for prediction in predictions:
-            text += chr(ord('A') + np.argmax(prediction))
+            text += chr(ord('A') + np.argmax(prediction)) if np.argmax(prediction) < 26 else chr(ord('0') + np.argmax(prediction) - 26)
         return text
 
 def box_contains_letter(bounding_rect):
